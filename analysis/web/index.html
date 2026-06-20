@@ -105,9 +105,12 @@
   .piece.b { color:#3a3a3a; text-shadow:0 1px 0 rgb(255 255 255 / .22); }
   .dot::before { content:""; position:absolute; width:30%; height:30%; border-radius:50%; background:rgb(20 20 20 / .28); z-index:2; }
   .dot.capture::before { width:90%; height:90%; background:transparent; border:5px solid rgb(20 20 20 / .25); }
-  .coord { position:absolute; font-size:10px; font-weight:700; opacity:.55; z-index:4; }
-  .coord.file { right:3px; bottom:1px; }
-  .coord.rank { left:3px; top:1px; }
+  .coord { position:absolute; font-size:11px; font-weight:800; z-index:4; pointer-events:none; user-select:none; }
+  .coord.file { right:4px; bottom:2px; }
+  .coord.rank { left:4px;  top:2px; }
+  /* colour each coordinate as the opposite square colour (classic look) */
+  .sq.light .coord { color:var(--dark); }
+  .sq.dark  .coord { color:var(--light); }
   #arrows { position:absolute; inset:0; pointer-events:none; z-index:5; }
 
   /* Panel + cards */
@@ -155,7 +158,55 @@
   label.opt { font-size:var(--fs-sm); color:var(--text-muted); display:flex; align-items:center; gap:6px; cursor:pointer; }
   input[type=range] { width:150px; accent-color:var(--primary); }
   input[type=checkbox] { accent-color:var(--primary); width:15px; height:15px; }
-  #status { min-height:18px; font-size:var(--fs-sm); color:var(--amber-400); }
+  #status { min-height:18px; font-size:var(--fs-sm); color:var(--amber-400); margin-top:var(--space-2); }
+
+  /* ---- Redesigned controls ---- */
+  .card-title {
+    font-size:var(--fs-xs); font-weight:800; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--text-subtle); margin-bottom:var(--space-3);
+  }
+  .btn-block { width:100%; padding:11px 14px; font-size:var(--fs-base); }
+  .btn-grid {
+    display:grid; grid-template-columns:1fr 1fr; gap:var(--space-2);
+    margin-top:var(--space-3);
+  }
+  .btn-grid button { width:100%; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+  .bi { font-size:var(--fs-md); line-height:1; }
+
+  .ctl-group {
+    margin-top:var(--space-4); border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden;
+  }
+  .ctl-group .ctl-row { border-bottom:1px solid var(--border); }
+  .ctl-group .ctl-row:last-child { border-bottom:0; }
+  .ctl-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px var(--space-3); background:var(--n-950);
+  }
+  .ctl-label { font-size:var(--fs-sm); color:var(--text); }
+  .depth-badge { font-size:var(--fs-xs); color:var(--text-muted); background:var(--n-950);
+    border:1px solid var(--border); padding:3px 9px; border-radius:var(--radius-pill); }
+  .depth-badge b { color:var(--primary-hover); }
+
+  /* Toggle switch */
+  .switch { position:relative; display:inline-block; width:40px; height:22px; flex:0 0 auto; }
+  .switch input { position:absolute; opacity:0; width:0; height:0; }
+  .switch .track {
+    position:absolute; inset:0; background:var(--n-600); border-radius:var(--radius-pill);
+    transition:background-color var(--dur-fast) var(--ease); cursor:pointer;
+  }
+  .switch .track::before {
+    content:""; position:absolute; height:16px; width:16px; left:3px; top:3px;
+    background:#fff; border-radius:50%; transition:transform var(--dur-fast) var(--ease);
+    box-shadow:var(--shadow-sm);
+  }
+  .switch input:checked + .track { background:var(--primary); }
+  .switch input:checked + .track::before { transform:translateX(18px); }
+  .switch input:focus-visible + .track { box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--ring); }
+
+  /* Depth slider */
+  .range-full { width:100%; margin-top:var(--space-2); accent-color:var(--primary); }
+  .range-hints { display:flex; justify-content:space-between; font-size:11px; color:var(--text-subtle); margin-top:2px; }
 
   /* Review */
   textarea {
@@ -281,28 +332,39 @@
 
     <!-- Free-play controls -->
     <div class="card" id="card-controls">
-      <div class="row">
-        <button id="btn-review-game">📋 Review this game</button>
+      <div class="card-title">Controls</div>
+
+      <button id="btn-review-game" class="btn-block">📋&nbsp; Review this game</button>
+
+      <div class="btn-grid">
+        <button id="btn-best"><span class="bi">♟</span> Play best</button>
+        <button class="sec" id="btn-undo"><span class="bi">↶</span> Undo</button>
+        <button class="sec" id="btn-new"><span class="bi">＋</span> New game</button>
+        <button class="sec" id="btn-flip"><span class="bi">⇅</span> Flip board</button>
       </div>
-      <div class="row">
-        <button id="btn-best">Play best move</button>
-        <button class="sec" id="btn-undo">Undo</button>
-        <button class="sec" id="btn-new">New game</button>
-        <button class="sec" id="btn-flip">Flip</button>
+
+      <div class="ctl-group">
+        <div class="ctl-row">
+          <span class="ctl-label">Show best move</span>
+          <label class="switch"><input type="checkbox" id="analyze-on" checked><span class="track"></span></label>
+        </div>
+        <div class="ctl-row">
+          <span class="ctl-label">Engine plays White</span>
+          <label class="switch"><input type="checkbox" id="auto-white"><span class="track"></span></label>
+        </div>
+        <div class="ctl-row">
+          <span class="ctl-label">Engine plays Black</span>
+          <label class="switch"><input type="checkbox" id="auto-black"><span class="track"></span></label>
+        </div>
       </div>
-      <div class="row">
-        <label class="opt"><input type="checkbox" id="analyze-on" checked> Analyze (show best move)</label>
+
+      <div class="ctl-row" style="margin-top:var(--space-3);">
+        <span class="ctl-label">Engine strength</span>
+        <span class="depth-badge">depth <b id="depthval">12</b></span>
       </div>
-      <div class="row">
-        <label class="opt"><input type="checkbox" id="auto-white"> Engine plays White</label>
-        <label class="opt"><input type="checkbox" id="auto-black"> Engine plays Black</label>
-      </div>
-      <div class="row">
-        <label class="opt">Depth
-          <input type="range" id="depth" min="4" max="18" value="12">
-          <span id="depthval">12</span>
-        </label>
-      </div>
+      <input type="range" id="depth" min="4" max="18" value="12" class="range-full">
+      <div class="range-hints"><span>faster</span><span>stronger</span></div>
+
       <div id="status"></div>
     </div>
   </div>
@@ -460,6 +522,23 @@ function render() {
     if (targets.includes(sqName)) {
       div.classList.add("dot");
       if (grid[sqName]) div.classList.add("capture");
+    }
+
+    // Coordinates on the board edges (respecting orientation):
+    // file letters along the bottom rank, rank numbers up the left file.
+    const isLeftEdge = flipped ? f === 7 : f === 0;
+    const isBottomEdge = flipped ? r === 7 : r === 0;
+    if (isLeftEdge) {
+      const c = document.createElement("span");
+      c.className = "coord rank";
+      c.textContent = sqName[1];
+      div.appendChild(c);
+    }
+    if (isBottomEdge) {
+      const c = document.createElement("span");
+      c.className = "coord file";
+      c.textContent = sqName[0];
+      div.appendChild(c);
     }
 
     const p = grid[sqName];
