@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess Brilliant — Analyzer Board</title>
+<style>
+  :root {
+    --sq: 68px;
+    --light: #eeeed2;
+    --dark: #769656;
+    --sel: #f6f669;
+    --last: #cdd26a;
+    --check: #e57373;
+    --best-from: rgba(80,170,255,0.55);
+    --best-to: rgba(80,170,255,0.55);
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #262421; color: #e8e6e3; margin: 0; padding: 24px;
+    display: flex; gap: 28px; justify-content: center; align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #9b978f; font-size: 13px; margin-bottom: 14px; }
+
+  .board-wrap { display: flex; gap: 10px; }
+  /* Evaluation bar */
+  #evalbar {
+    width: 22px; height: calc(var(--sq) * 8); background: #111;
+    border-radius: 4px; overflow: hidden; position: relative;
+    box-shadow: 0 0 0 1px #000 inset;
+  }
+  #evalwhite {
+    position: absolute; bottom: 0; left: 0; right: 0; background: #f0f0f0;
+    height: 50%; transition: height .25s ease;
+  }
+  #evaltext {
+    position: absolute; width: 100%; text-align: center; font-size: 10px;
+    font-weight: 700; top: 4px; color: #111; mix-blend-mode: difference;
+  }
+
+  #boardbox { position: relative; width: calc(var(--sq) * 8); height: calc(var(--sq) * 8); }
+  #board {
+    display: grid; grid-template-columns: repeat(8, var(--sq));
+    grid-template-rows: repeat(8, var(--sq));
+    border-radius: 4px; overflow: hidden; user-select: none;
+  }
+  .sq {
+    width: var(--sq); height: var(--sq); position: relative;
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(var(--sq) * 0.78); line-height: 1; cursor: pointer;
+  }
+  .sq.light { background: var(--light); }
+  .sq.dark  { background: var(--dark); }
+  .sq.sel   { background: var(--sel) !important; }
+  .sq.last::after {
+    content: ""; position: absolute; inset: 0; background: var(--last); opacity: .55;
+  }
+  .sq.check { box-shadow: 0 0 0 4px var(--check) inset; border-radius: 4px; }
+  .piece { position: relative; z-index: 3; }
+  .piece.w { color: #fff; text-shadow: 0 0 2px #000, 0 1px 2px #000; }
+  .piece.b { color: #111; text-shadow: 0 0 2px #aaa; }
+  /* legal-move dots */
+  .dot::before {
+    content: ""; position: absolute; width: 28%; height: 28%; border-radius: 50%;
+    background: rgba(20,20,20,.32); z-index: 2;
+  }
+  .dot.capture::before {
+    width: 92%; height: 92%; border-radius: 50%; background: transparent;
+    border: 6px solid rgba(20,20,20,.28);
+  }
+  .coord { position: absolute; font-size: 11px; font-weight: 700; opacity:.65; z-index: 4; }
+  .coord.file { right: 3px; bottom: 1px; }
+  .coord.rank { left: 3px; top: 1px; }
+  #arrows { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+
+  /* Side panel */
+  .panel { width: 340px; }
+  .card {
+    background: #312e2b; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;
+  }
+  .turn-pill {
+    display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px;
+    font-weight: 700; background: #444;
+  }
+  .best-san { font-size: 26px; font-weight: 800; margin: 6px 0; }
+  .best-eval { font-size: 15px; color: #b9d98a; }
+  .brilliant {
+    background: linear-gradient(90deg,#27c0c0,#1e9e9e); color:#04201f;
+    font-weight:800; padding:6px 10px; border-radius:6px; margin-top:8px; display:none;
+  }
+  .pv { font-size: 13px; color: #cfc; line-height: 1.6; word-spacing: 3px; }
+  .muted { color: #9b978f; font-size: 12px; }
+  button {
+    background: #4b5; color: #06210d; border: 0; border-radius: 6px;
+    padding: 9px 12px; font-weight: 700; cursor: pointer; font-size: 13px;
+  }
+  button.sec { background: #54504b; color: #e8e6e3; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  label.opt { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  input[type=range] { width: 150px; }
+  #status { min-height: 18px; font-size: 13px; color: #e0c060; }
+  .gameover { font-size: 16px; font-weight: 800; color: #ffd86b; }
+
+  /* Review UI */
+  textarea {
+    width: 100%; height: 70px; background: #262421; color: #e8e6e3; border: 1px solid #555;
+    border-radius: 6px; padding: 8px; font-family: inherit; font-size: 12px; resize: vertical;
+  }
+  .nav button { padding: 8px 10px; font-size: 15px; }
+  .movelist {
+    max-height: 220px; overflow-y: auto; line-height: 1.9; font-size: 14px;
+    background: #262421; border-radius: 6px; padding: 8px; margin-top: 8px;
+  }
+  .movenum { color: #8a8680; margin-right: 2px; }
+  .mv {
+    cursor: pointer; padding: 1px 5px; border-radius: 4px; margin-right: 2px; white-space: nowrap;
+  }
+  .mv:hover { background: #3d3a36; }
+  .mv.cur { outline: 2px solid #6c93d6; background: #3d3a36; }
+  .mark { font-weight: 800; margin-left: 1px; }
+  .verdict { font-size: 14px; margin-top: 8px; min-height: 20px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 11px; padding: 3px 7px; border-radius: 10px; background: #262421; font-weight: 700; }
+  .headers { font-size: 13px; color: #cfccc6; margin-bottom: 6px; }
+  .hidden { display: none !important; }
+  /* classification colours (chess.com-like) */
+  .c-Brilliant { color: #27c0c0; }
+  .c-Great { color: #749bbf; }
+  .c-Best { color: #95bb4a; }
+  .c-Excellent { color: #95bb4a; }
+  .c-Good { color: #b8b8b8; }
+  .c-Inaccuracy { color: #f7c045; }
+  .c-Mistake { color: #e58f2a; }
+  .c-Blunder { color: #ca3431; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>Chess Brilliant</h1>
+    <div class="sub">Click a piece, then a target square. The engine shows the best move for the side to move.</div>
+    <div class="board-wrap">
+      <div id="evalbar"><div id="evalwhite"></div><div id="evaltext">0.0</div></div>
+      <div id="boardbox">
+        <div id="board"></div>
+        <svg id="arrows" viewBox="0 0 544 544" preserveAspectRatio="none">
+          <defs>
+            <marker id="ah" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+              <path d="M0,0 L4,2 L0,4 Z" fill="#4aa8ff"></path>
+            </marker>
+            <marker id="ahb" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
+              <path d="M0,0 L4,2 L0,4 Z" fill="#27c0c0"></path>
+            </marker>
+          </defs>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <span class="turn-pill" id="turnpill">White to move</span>
+      <div class="best-san" id="bestsan">—</div>
+      <div class="best-eval" id="besteval"></div>
+      <div class="muted" id="why" style="margin-top:6px;"></div>
+      <div class="brilliant" id="brilliant"></div>
+      <div id="gameover" class="gameover"></div>
+    </div>
+
+    <div class="card">
+      <div class="muted" id="pvlabel">Predicted line (best play both sides)</div>
+      <div class="pv" id="pv">—</div>
+    </div>
+
+    <!-- Game Review -->
+    <div class="card">
+      <div class="muted">Review a game — paste a chess.com <b>PGN</b> (Game → Share → PGN) or a <b>FEN</b></div>
+      <textarea id="pgn" placeholder="Paste PGN or FEN here…"></textarea>
+      <div class="row" style="margin-top:8px;">
+        <button id="btn-load">Load &amp; review</button>
+        <button class="sec hidden" id="btn-exit-review">Back to play</button>
+      </div>
+
+      <div id="review-body" class="hidden">
+        <div class="headers" id="rv-headers"></div>
+        <div class="row nav">
+          <button class="sec" id="rv-first">⏮</button>
+          <button class="sec" id="rv-prev">◀</button>
+          <button class="sec" id="rv-next">▶</button>
+          <button class="sec" id="rv-last">⏭</button>
+          <span id="rv-ply" style="align-self:center;font-size:13px;"></span>
+        </div>
+        <div class="verdict" id="rv-verdict"></div>
+        <div class="row" style="margin-top:8px;">
+          <button id="btn-analyze-all">Analyze whole game</button>
+          <button class="sec" id="btn-next-mistake">Next mistake ▶</button>
+        </div>
+        <div id="rv-progress" class="muted"></div>
+        <div class="summary" id="rv-summary"></div>
+        <div class="movelist" id="rv-moves"></div>
+
+        <details style="margin-top:10px;font-size:12px;">
+          <summary class="muted" style="cursor:pointer;">What do the labels mean?</summary>
+          <div style="margin-top:6px;line-height:1.6;">
+            <span class="c-Brilliant">Brilliant (!!)</span> — a sound sacrifice that still wins/holds.<br>
+            <span class="c-Great">Great</span> — the only good move; alternatives were clearly worse.<br>
+            <span class="c-Best">Best</span> — the engine's top move.<br>
+            <span class="c-Excellent">Excellent</span> / <span class="c-Good">Good</span> — fine moves, barely behind the best.<br>
+            <span class="c-Inaccuracy">Inaccuracy</span> — a better move existed; small loss.<br>
+            <span class="c-Mistake">Mistake</span> — a meaningful error.<br>
+            <span class="c-Blunder">Blunder</span> — a serious error (hangs material or allows mate).
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Free-play controls -->
+    <div class="card" id="card-controls">
+      <div class="row">
+        <button id="btn-review-game">📋 Review this game</button>
+      </div>
+      <div class="row">
+        <button id="btn-best">Play best move</button>
+        <button class="sec" id="btn-undo">Undo</button>
+        <button class="sec" id="btn-new">New game</button>
+        <button class="sec" id="btn-flip">Flip</button>
+      </div>
+      <div class="row">
+        <label class="opt"><input type="checkbox" id="analyze-on" checked> Analyze (show best move)</label>
+      </div>
+      <div class="row">
+        <label class="opt"><input type="checkbox" id="auto-white"> Engine plays White</label>
+        <label class="opt"><input type="checkbox" id="auto-black"> Engine plays Black</label>
+      </div>
+      <div class="row">
+        <label class="opt">Depth
+          <input type="range" id="depth" min="4" max="18" value="12">
+          <span id="depthval">12</span>
+        </label>
+      </div>
+      <div id="status"></div>
+    </div>
+  </div>
+
+<!-- Promotion chooser -->
+<div id="promo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+     z-index:50;align-items:center;justify-content:center;">
+  <div style="background:#312e2b;padding:18px;border-radius:10px;text-align:center;">
+    <div style="margin-bottom:10px;font-weight:700;">Promote to:</div>
+    <div class="row" style="justify-content:center;">
+      <button data-p="q" style="font-size:24px">♛</button>
+      <button data-p="r" style="font-size:24px">♜</button>
+      <button data-p="b" style="font-size:24px">♝</button>
+      <button data-p="n" style="font-size:24px">♞</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SQ = 68;                 // px per square (matches --sq)
+const GLYPH = {
+  K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",
+  k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"
+};
+let state = null;
+let analysis = null;          // latest analysis result (tagged with its fen)
+let flipped = false;
+let selected = null;          // selected source square name
+let pendingPromo = null;      // {from,to}
+let depth = 12;
+let analyzeSeq = 0;           // guards against stale analysis responses
+let mode = "play";           // "play" | "review"
+const review = { loaded: false, ply: 0, count: 0, moves: [], headers: {}, judgments: {} };
+const MATE_CP = 100000;
+
+const $ = id => document.getElementById(id);
+
+function fmtCp(cp) {
+  if (cp === null || cp === undefined) return "";
+  if (cp > 90000) return "#" + (MATE_CP - cp);
+  if (cp < -90000) return "#-" + (MATE_CP + cp);
+  return (cp >= 0 ? "+" : "") + (cp / 100).toFixed(2);
+}
+
+function setMode(m) {
+  mode = m;
+  $("card-controls").classList.toggle("hidden", m === "review");
+  $("review-body").classList.toggle("hidden", !(m === "review" && review.loaded));
+  $("btn-exit-review").classList.toggle("hidden", m !== "review");
+}
+
+function depthQ() { return "?depth=" + depth; }
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+// Apply a fresh board state: render immediately (so moves feel instant),
+// then kick off analysis separately.
+function applyState(s) {
+  state = s;
+  if (!analysis || analysis.fen !== state.fen) analysis = null;
+  render();
+  refreshAnalysis();
+}
+
+// Fetch analysis for the current position WITHOUT blocking moves. Results that
+// arrive after the board has changed are discarded.
+async function refreshAnalysis() {
+  if (!$("analyze-on").checked) { analysis = null; $("status").textContent = ""; render(); return; }
+  if (!state || state.game_over) { $("status").textContent = ""; return; }
+  const seq = ++analyzeSeq;
+  const fenAtRequest = state.fen;
+  $("status").textContent = "Analyzing…";
+  try {
+    const data = await api("/api/analyze" + depthQ());
+    if (seq !== analyzeSeq || data.fen !== state.fen || fenAtRequest !== state.fen) return;
+    analysis = data;
+    $("status").textContent = "";
+    render();
+  } catch (e) {
+    if (seq === analyzeSeq) $("status").textContent = "Analysis error: " + e.message;
+  }
+}
+
+// ---- square <-> coordinate helpers ----
+function fileRank(sqName) {
+  return [sqName.charCodeAt(0) - 97, sqName.charCodeAt(1) - 49]; // file 0-7, rank 0-7
+}
+// pixel center in the 8x8 grid (SVG uses an 8*68=544 viewBox)
+function centerOf(sqName) {
+  let [f, r] = fileRank(sqName);
+  let col = flipped ? 7 - f : f;
+  let row = flipped ? r : 7 - r;
+  return [col * SQ + SQ / 2, row * SQ + SQ / 2];
+}
+
+function parseFenBoard(fen) {
+  const rows = fen.split(" ")[0].split("/");
+  const grid = {}; // sqName -> piece char
+  for (let r = 0; r < 8; r++) {
+    let file = 0;
+    for (const ch of rows[r]) {
+      if (/\d/.test(ch)) { file += +ch; }
+      else {
+        const sqName = String.fromCharCode(97 + file) + (8 - r);
+        grid[sqName] = ch;
+        file++;
+      }
+    }
+  }
+  return grid;
+}
+
+function legalTargets(from) {
+  if (!state) return [];
+  return state.legal_moves
+    .filter(m => m.slice(0, 2) === from)
+    .map(m => m.slice(2, 4));
+}
+
+function render() {
+  const board = $("board");
+  board.innerHTML = "";
+  const grid = parseFenBoard(state.fen);
+  // Only use analysis that matches the current position.
+  const a = (analysis && analysis.fen === state.fen) ? analysis : null;
+  const last = state.last_move || [];
+
+  const order = [];
+  for (let row = 0; row < 8; row++)
+    for (let col = 0; col < 8; col++) {
+      const f = flipped ? 7 - col : col;
+      const r = flipped ? row : 7 - row;
+      order.push(String.fromCharCode(97 + f) + (r + 1));
+    }
+
+  const targets = selected ? legalTargets(selected) : [];
+
+  for (const sqName of order) {
+    const [f, r] = fileRank(sqName);
+    const div = document.createElement("div");
+    div.className = "sq " + (((f + r) % 2 === 0) ? "dark" : "light");
+    div.dataset.sq = sqName;
+    if (selected === sqName) div.classList.add("sel");
+    if (last.includes(sqName)) div.classList.add("last");
+    if (state.check_square === sqName) div.classList.add("check");
+
+    if (targets.includes(sqName)) {
+      div.classList.add("dot");
+      if (grid[sqName]) div.classList.add("capture");
+    }
+
+    const p = grid[sqName];
+    if (p) {
+      const span = document.createElement("span");
+      span.className = "piece " + (p === p.toUpperCase() ? "w" : "b");
+      span.textContent = GLYPH[p];
+      div.appendChild(span);
+    }
+    div.onclick = () => onSquareClick(sqName);
+    board.appendChild(div);
+  }
+
+  drawArrow(a);
+  renderPanel(a);
+  if (mode === "review") renderReview();
+}
+
+function drawArrow(a) {
+  const svg = $("arrows");
+  svg.querySelectorAll("line").forEach(l => l.remove());
+  if (!a || a.game_over || !a.best_from) return;
+  const [x1, y1] = centerOf(a.best_from);
+  const [x2, y2] = centerOf(a.best_to);
+  // shorten so the arrowhead sits nicely
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len;
+  const sx = x1 + ux * 18, sy = y1 + uy * 18;
+  const ex = x2 - ux * 20, ey = y2 - uy * 20;
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  line.setAttribute("x1", sx); line.setAttribute("y1", sy);
+  line.setAttribute("x2", ex); line.setAttribute("y2", ey);
+  const brilliant = a.is_brilliant;
+  line.setAttribute("stroke", brilliant ? "#27c0c0" : "#4aa8ff");
+  line.setAttribute("stroke-width", "10");
+  line.setAttribute("stroke-linecap", "round");
+  line.setAttribute("opacity", "0.85");
+  line.setAttribute("marker-end", brilliant ? "url(#ahb)" : "url(#ah)");
+  svg.appendChild(line);
+}
+
+function renderPanel(a) {
+  $("turnpill").textContent =
+    (state.turn === "white" ? "White" : "Black") + " to move" +
+    (state.in_check ? " (check)" : "");
+  $("brilliant").style.display = "none";
+
+  // Game over (from the board state, independent of analysis).
+  if (state.game_over) {
+    $("bestsan").textContent = "—";
+    $("besteval").textContent = "";
+    $("pv").textContent = "—";
+    $("gameover").textContent = state.outcome || "Game over";
+    setEvalBar(null);
+    return;
+  }
+  $("gameover").textContent = "";
+
+  // No analysis yet (pending or turned off).
+  if (!a) {
+    const off = !$("analyze-on").checked;
+    $("bestsan").textContent = off ? "—" : "…";
+    $("besteval").textContent = off ? "Analysis off" : "Analyzing…";
+    $("why").textContent = "";
+    $("pv").textContent = "—";
+    setEvalBar(off ? null : (analysis ? analysis.white_cp : null));
+    return;
+  }
+  $("why").textContent = a.why || "";
+
+  $("bestsan").textContent = a.best_san || "—";
+  if (a.source === "book") {
+    $("besteval").textContent = "📖 Book move for " + a.side_to_move + " · master theory";
+    $("pvlabel").textContent = "Popular moves (share of master games)";
+  } else {
+    $("besteval").textContent = "Best for " + a.side_to_move +
+      " · eval " + a.eval + " · depth " + a.depth;
+    $("pvlabel").textContent = "Predicted line (best play both sides)";
+  }
+  $("pv").textContent = (a.pv && a.pv.length) ? a.pv.join("  ") : "—";
+  if (a.is_brilliant) {
+    $("brilliant").style.display = "block";
+    $("brilliant").textContent = "!! Brilliant: " + a.brilliant_text;
+  }
+  setEvalBar(a.white_cp);
+}
+
+function setEvalBar(whiteCp) {
+  const bar = $("evalwhite"), txt = $("evaltext");
+  if (whiteCp === null || whiteCp === undefined) { bar.style.height = "50%"; txt.textContent = ""; return; }
+  let pct;
+  if (Math.abs(whiteCp) > 90000) {           // forced mate
+    pct = whiteCp > 0 ? 100 : 0;
+    txt.textContent = whiteCp > 0 ? "M" : "-M";
+  } else {
+    // squash centipawns to a 0-100% bar
+    pct = 50 + 50 * Math.tanh(whiteCp / 600);
+    txt.textContent = (whiteCp / 100).toFixed(1);
+  }
+  bar.style.height = pct + "%";
+}
+
+// ---- interaction ----
+function onSquareClick(sqName) {
+  if (mode === "review") return;   // review board is read-only; use the nav buttons
+  if (!state || state.game_over) return;
+  const grid = parseFenBoard(state.fen);
+
+  if (selected) {
+    const targets = legalTargets(selected);
+    if (targets.includes(sqName)) {
+      // promotion?
+      const isPromo = state.legal_moves.includes(selected + sqName + "q");
+      if (isPromo) { pendingPromo = { from: selected, to: sqName }; $("promo").style.display = "flex"; return; }
+      doMove(selected + sqName);
+      selected = null;
+      return;
+    }
+  }
+  // select own piece
+  const p = grid[sqName];
+  const ownPiece = p && ((state.turn === "white") === (p === p.toUpperCase()));
+  selected = ownPiece ? sqName : null;
+  render();
+}
+
+async function doMove(uci) {
+  selected = null;
+  try {
+    const s = await api("/api/move", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uci })
+    });
+    applyState(s);          // board updates instantly; analysis follows
+    maybeEngineMove();
+  } catch (e) {
+    $("status").textContent = "Move error: " + e.message;
+  }
+}
+
+async function maybeEngineMove() {
+  if (!state || state.game_over) return;
+  const auto = (state.turn === "white" && $("auto-white").checked) ||
+               (state.turn === "black" && $("auto-black").checked);
+  if (!auto) return;
+  setTimeout(async () => {
+    $("status").textContent = "Engine thinking…";
+    try {
+      const s = await api("/api/engine_move" + depthQ(), { method: "POST" });
+      selected = null; applyState(s); maybeEngineMove();
+    } catch (e) { $("status").textContent = e.message; }
+  }, 200);
+}
+
+// promotion buttons
+document.querySelectorAll("#promo button").forEach(btn => {
+  btn.onclick = () => {
+    $("promo").style.display = "none";
+    if (pendingPromo) { doMove(pendingPromo.from + pendingPromo.to + btn.dataset.p); }
+    pendingPromo = null; selected = null;
+  };
+});
+
+$("btn-best").onclick = async () => {
+  $("status").textContent = "Engine thinking…";
+  try {
+    const s = await api("/api/engine_move" + depthQ(), { method: "POST" });
+    selected = null; applyState(s); maybeEngineMove();
+  } catch (e) { $("status").textContent = e.message; }
+};
+$("btn-undo").onclick = async () => {
+  const s = await api("/api/undo", { method: "POST" }); selected = null; applyState(s);
+};
+$("btn-new").onclick = async () => {
+  const s = await api("/api/new", { method: "POST" }); selected = null; applyState(s);
+};
+$("btn-flip").onclick = () => { flipped = !flipped; render(); };
+$("depth").oninput = e => { depth = +e.target.value; $("depthval").textContent = depth; };
+$("analyze-on").onchange = () => { refreshAnalysis(); };
+
+// ---------------- Game review ----------------
+function looksLikeFen(s) {
+  const parts = s.trim().split(/\s+/);
+  return parts.length >= 4 && parts[0].split("/").length === 8;
+}
+
+async function enterReview(data) {
+  Object.assign(review, {
+    loaded: true, ply: 0, count: data.ply_count,
+    moves: data.moves, headers: data.headers, judgments: {}
+  });
+  setMode("review");
+  renderHeaders();
+  $("rv-progress").textContent = "";
+  await gotoPly(0);
+  $("status").textContent = "";
+}
+
+async function loadGame() {
+  const text = $("pgn").value.trim();
+  if (!text) { $("status").textContent = "Paste a PGN or FEN first."; return; }
+  const body = looksLikeFen(text) ? { fen: text } : { pgn: text };
+  $("status").textContent = "Loading…";
+  try {
+    const data = await api("/api/review/load", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    await enterReview(data);
+  } catch (e) {
+    $("status").textContent = "Load error: " + e.message;
+  }
+}
+
+async function reviewCurrentGame() {
+  $("status").textContent = "Loading game…";
+  try {
+    const data = await api("/api/review/from_play", { method: "POST" });
+    await enterReview(data);
+  } catch (e) {
+    $("status").textContent = e.message;
+  }
+}
+
+function renderHeaders() {
+  const h = review.headers || {};
+  const w = h.White || "White", b = h.Black || "Black";
+  const meta = [h.Event, h.Date, h.Result].filter(Boolean).join(" · ");
+  $("rv-headers").innerHTML = `<b>${w}</b> vs <b>${b}</b>` + (meta ? `<br>${meta}` : "");
+}
+
+async function gotoPly(n) {
+  n = Math.max(0, Math.min(review.count, n));
+  review.ply = n;
+  selected = null;
+  try {
+    const data = await api(`/api/review/ply?n=${n}&depth=${depth}`);
+    state = data;
+    analysis = data.analysis;
+    if (data.played) review.judgments[n] = data.played;
+    render();
+  } catch (e) {
+    $("status").textContent = "Review error: " + e.message;
+  }
+}
+
+function moveHeader(ply) {
+  const num = Math.ceil(ply / 2);
+  return num + (ply % 2 === 1 ? "." : "...");
+}
+
+function renderReview() {
+  $("rv-ply").textContent = `Move ${review.ply} / ${review.count}`;
+  $("rv-first").disabled = $("rv-prev").disabled = review.ply <= 0;
+  $("rv-next").disabled = $("rv-last").disabled = review.ply >= review.count;
+
+  const v = $("rv-verdict");
+  if (review.ply === 0) {
+    v.textContent = "Start position. Use ▶ or → to step through.";
+  } else {
+    const j = review.judgments[review.ply];
+    if (!j) { v.textContent = "…"; }
+    else {
+      let s = `<span class="c-${j.label}">${moveHeader(review.ply)} ${j.san}` +
+              `${j.is_brilliant ? "!!" : ""} — ${j.label}</span> ` +
+              `<span class="muted">(${fmtCp(j.eval_after_white)})</span>`;
+      if (j.explanation) s += `<br><span class="muted">${j.explanation}</span>`;
+      v.innerHTML = s;
+    }
+  }
+  renderMoveList();
+  renderSummary();
+}
+
+function renderMoveList() {
+  const box = $("rv-moves");
+  box.innerHTML = "";
+  for (let i = 0; i < review.count; i++) {
+    const ply = i + 1;
+    if (ply % 2 === 1) {
+      const n = document.createElement("span");
+      n.className = "movenum";
+      n.textContent = Math.ceil(ply / 2) + ".";
+      box.appendChild(n);
+    }
+    const j = review.judgments[ply];
+    const span = document.createElement("span");
+    span.className = "mv" + (ply === review.ply ? " cur" : "") + (j ? " c-" + j.label : "");
+    span.textContent = review.moves[i].san + (j && j.is_brilliant ? "!!" : "");
+    span.onclick = () => gotoPly(ply);
+    box.appendChild(span);
+  }
+  const cur = box.querySelector(".mv.cur");
+  if (cur) cur.scrollIntoView({ block: "nearest" });
+}
+
+function renderSummary() {
+  const counts = { white: {}, black: {} };
+  for (const p in review.judgments) {
+    const j = review.judgments[p];
+    counts[j.mover][j.label] = (counts[j.mover][j.label] || 0) + 1;
+  }
+  const show = ["Brilliant", "Inaccuracy", "Mistake", "Blunder"];
+  const box = $("rv-summary");
+  box.innerHTML = "";
+  for (const side of ["white", "black"]) {
+    const items = show.filter(l => counts[side][l]);
+    if (!items.length) continue;
+    const label = document.createElement("span");
+    label.className = "chip";
+    label.textContent = (side === "white" ? "White" : "Black") + ":";
+    box.appendChild(label);
+    for (const l of items) {
+      const c = document.createElement("span");
+      c.className = "chip c-" + l;
+      c.textContent = counts[side][l] + " " + l;
+      box.appendChild(c);
+    }
+  }
+}
+
+async function analyzeAll() {
+  $("btn-analyze-all").disabled = true;
+  for (let n = 1; n <= review.count; n++) {
+    if (!review.judgments[n]) {
+      $("rv-progress").textContent = `Analyzing ${n} / ${review.count}…`;
+      try {
+        const data = await api(`/api/review/ply?n=${n}&depth=${depth}`);
+        if (data.played) review.judgments[n] = data.played;
+        renderMoveList(); renderSummary();
+      } catch (e) { $("rv-progress").textContent = "Error: " + e.message; break; }
+    }
+  }
+  $("rv-progress").textContent = `Done — reviewed ${review.count} moves.`;
+  $("btn-analyze-all").disabled = false;
+  renderReview();
+}
+
+async function nextMistake() {
+  const bad = { Inaccuracy: 1, Mistake: 1, Blunder: 1 };
+  for (let n = review.ply + 1; n <= review.count; n++) {
+    let j = review.judgments[n];
+    if (!j) {
+      $("rv-progress").textContent = `Scanning ${n} / ${review.count}…`;
+      try {
+        const data = await api(`/api/review/ply?n=${n}&depth=${depth}`);
+        if (data.played) { j = data.played; review.judgments[n] = j; }
+      } catch (e) { break; }
+    }
+    if (j && bad[j.label]) { $("rv-progress").textContent = ""; await gotoPly(n); return; }
+  }
+  $("rv-progress").textContent = "No more mistakes from here.";
+}
+
+$("btn-load").onclick = loadGame;
+$("btn-review-game").onclick = reviewCurrentGame;
+$("btn-exit-review").onclick = async () => {
+  review.loaded = false; setMode("play");
+  const s = await api("/api/state"); applyState(s);
+};
+$("rv-first").onclick = () => gotoPly(0);
+$("rv-prev").onclick  = () => gotoPly(review.ply - 1);
+$("rv-next").onclick  = () => gotoPly(review.ply + 1);
+$("rv-last").onclick  = () => gotoPly(review.count);
+$("btn-analyze-all").onclick = analyzeAll;
+$("btn-next-mistake").onclick = nextMistake;
+document.addEventListener("keydown", e => {
+  if (mode !== "review") return;
+  if (e.key === "ArrowLeft") { gotoPly(review.ply - 1); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { gotoPly(review.ply + 1); e.preventDefault(); }
+});
+
+(async function init() {
+  const s = await api("/api/state");
+  applyState(s);
+})();
+</script>
+</body>
+</html>
