@@ -613,6 +613,10 @@ function renderPanel(a) {
   if (a.source === "book") {
     $("besteval").textContent = "📖 Book move for " + a.side_to_move + " · master theory";
     $("pvlabel").textContent = "Popular moves (share of master games)";
+  } else if (a.source === "learned") {
+    $("besteval").textContent = "📚 Learned · best for " + a.side_to_move +
+      " · eval " + a.eval + " (depth " + a.depth + ")";
+    $("pvlabel").textContent = "From your reviewed mistakes";
   } else {
     $("besteval").textContent = "Best for " + a.side_to_move +
       " · eval " + a.eval + " · depth " + a.depth;
@@ -872,7 +876,17 @@ async function analyzeAll() {
       } catch (e) { $("rv-progress").textContent = "Error: " + e.message; break; }
     }
   }
-  $("rv-progress").textContent = `Done — reviewed ${review.count} moves.`;
+  // Learn from every mistake: the engine stores the correct move (analysed
+  // deeper) so it recalls it next time the position appears.
+  $("rv-progress").textContent = `Reviewed ${review.count} moves. Learning from mistakes…`;
+  try {
+    const r = await api("/api/review/learn?depth=" + depth, { method: "POST" });
+    $("rv-progress").textContent =
+      `Done — reviewed ${review.count} moves. Learned ${r.learned} correction(s); ` +
+      `engine now remembers ${r.total} position(s).`;
+  } catch (e) {
+    $("rv-progress").textContent = `Done — reviewed ${review.count} moves. (learning failed: ${e.message})`;
+  }
   $("btn-analyze-all").disabled = false;
   renderReview();
 }

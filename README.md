@@ -110,6 +110,16 @@ Then:
   (how many blunders/mistakes each side made); **Next mistake ▶** jumps to the
   next place someone went wrong — the moments worth studying.
 
+#### Learning from your mistakes
+After **Analyze whole game**, the engine **learns from every mistake**: for each
+Inaccuracy/Mistake/Blunder it analyses the position deeper and stores the correct
+move in a persistent learning file (`analysis/books/learned.json`, keyed by
+position). Next time you reach that position — playing or reviewing — it instantly
+**recalls the learned move** (shown with a 📚 badge) instead of recomputing it,
+and reminds you what you played wrong. The knowledge accumulates across games and
+survives restarts. (This is a classical engine "learning file" — verified
+knowledge keyed by position, not neural-network retraining.)
+
 This is the right way to use the engine for learning: review *finished* games,
 not live ones.
 

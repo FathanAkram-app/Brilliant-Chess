@@ -10,6 +10,9 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Personal learning data (generated at runtime from your own game reviews)
+/analysis/books/learned.json
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

@@ -33,6 +33,7 @@ from brilliancy import (
     judge_move,
 )
 from engine import MATE_SCORE, Engine
+from learn import LearningStore
 from see import PIECE_VALUE, best_opponent_capture
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +45,12 @@ board = chess.Board()
 engine_ctx = Engine()
 engine = engine_ctx.__enter__()
 book = OpeningBook(os.path.join(HERE, "books", "book.bin"))
+learned = LearningStore(os.path.join(HERE, "books", "learned.json"))
+
+# When learning from a mistake, analyse deeper than live play so the stored
+# knowledge is better than what a real-time search could produce.
+LEARN_DEPTH = 20
+LEARN_MOVETIME = 4.0
 
 board_lock = threading.Lock()   # guards board reads/writes (fast)
 engine_lock = threading.Lock()  # guards the single engine process (held during search)
@@ -159,10 +166,13 @@ def api_engine_move():
         if board.is_game_over():
             return jsonify(board_state())
         snapshot = board.copy()
-    # Prefer an instant book move; otherwise search.
+    # Prefer a book move, then a learned correction, then a live search.
     hit = book.probe(snapshot)
+    le = learned.get(snapshot)
     if hit is not None:
         best = hit["best"]
+    elif le is not None:
+        best = chess.Move.from_uci(le["best_uci"])
     else:
         with engine_lock:
             best = engine.analyse(snapshot, depth=depth, movetime=ANALYSIS_TIME_CAP).best_move
@@ -198,12 +208,30 @@ def book_payload(snapshot: chess.Board, fen: str, hit: dict) -> dict:
     }
 
 
+def learned_payload(b: chess.Board, fen: str, e: dict) -> dict:
+    """Analysis response from a learned position (recalled, no live search)."""
+    best = chess.Move.from_uci(e["best_uci"])
+    side = "white" if b.turn == chess.WHITE else "black"
+    mover_cp = e["white_cp"] if b.turn == chess.WHITE else -e["white_cp"]
+    note = (f"Learned from your review: here you played {e.get('mistake_san','?')} "
+            f"({e.get('label','a mistake')}). The best move is {e['best_san']}.")
+    return {
+        "fen": fen, "game_over": False, "source": "learned", "side_to_move": side,
+        "best_uci": e["best_uci"],
+        "best_from": chess.square_name(best.from_square),
+        "best_to": chess.square_name(best.to_square),
+        "best_san": e["best_san"],
+        "eval": fmt_eval(mover_cp), "white_cp": e["white_cp"], "depth": e["depth"],
+        "pv": [], "is_brilliant": False, "brilliant_text": "", "why": note,
+    }
+
+
 @app.route("/api/analyze")
 def api_analyze():
     """Analyse the current position. Returns the FEN it was computed for so the
     frontend can discard the result if the user has already moved on.
 
-    Order: opening book (instant) -> cache -> engine search."""
+    Order: opening book -> learned file -> cache -> engine search."""
     depth = get_depth()
     with board_lock:
         snapshot = board.copy()
@@ -216,6 +244,11 @@ def api_analyze():
     hit = book.probe(snapshot)
     if hit is not None:
         return jsonify(book_payload(snapshot, fen, hit))
+
+    # 1b. Learned file: a correction we computed from a past review.
+    le = learned.get(snapshot)
+    if le is not None:
+        return jsonify(learned_payload(snapshot, fen, le))
 
     # 2. Cache (keyed by position + depth).
     key = f"{fen}|{depth}"
@@ -601,6 +634,47 @@ def api_review_ply():
     else:
         payload["played"] = None
     return jsonify(payload)
+
+
+@app.route("/api/review/learn", methods=["POST"])
+def api_review_learn():
+    """Learn from every mistake in the reviewed game: for each Inaccuracy/
+    Mistake/Blunder, analyse the position deeper and remember the right move."""
+    if not review["loaded"]:
+        return jsonify({"error": "No game loaded."}), 400
+    depth = get_depth()
+    bad = {"Inaccuracy", "Mistake", "Blunder"}
+    new_count = 0
+    examples = []
+    for n in range(1, len(review["moves"]) + 1):
+        bp = review_board(n - 1)
+        move = chess.Move.from_uci(review["moves"][n - 1])
+        j = played_judgment(bp, move, depth)
+        if j["label"] not in bad:
+            continue
+        # Deeper search of the position BEFORE the mistake = the lesson.
+        with engine_lock:
+            a = engine.analyse(bp, depth=LEARN_DEPTH, movetime=LEARN_MOVETIME)
+        white_cp = a.score_cp if bp.turn == chess.WHITE else -a.score_cp
+        entry = {
+            "best_uci": a.best_move.uci(),
+            "best_san": bp.san(a.best_move),
+            "white_cp": white_cp,
+            "depth": a.depth,
+            "mistake_san": j["san"],
+            "label": j["label"],
+        }
+        if learned.put(bp, entry) and len(examples) < 8:
+            examples.append({"move_no": (n + 1) // 2, "played": j["san"],
+                             "label": j["label"], "best": entry["best_san"]})
+        new_count += 1
+    learned.save()
+    return jsonify({"learned": new_count, "examples": examples, "total": len(learned)})
+
+
+@app.route("/api/learn/stats")
+def api_learn_stats():
+    return jsonify({"total": len(learned)})
 
 
 if __name__ == "__main__":
