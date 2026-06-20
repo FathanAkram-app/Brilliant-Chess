@@ -191,6 +191,14 @@ analysis/
 run.bat          one-click launcher (Windows)
 ```
 
+## Credits
+- Web UI styling follows a three-layer design-token system (primitive →
+  semantic → component) from the
+  [ui-ux-pro-max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+  design skill — WCAG-AA contrast, consistent spacing/typography scales,
+  visible focus rings, and `prefers-reduced-motion` support.
+- Opening book: `gm2001.bin` (Polyglot, GM games).
+
 ## Status / ideas for next steps
 Done: from-scratch Rust engine (perft-validated), PeSTO eval, alpha-beta search,
 UCI, opening book, brilliancy detection, web play board, full Game Review with
